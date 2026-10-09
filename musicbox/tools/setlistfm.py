@@ -4,6 +4,7 @@ from .. import config
 
 META = {
     "id": "setlistfm",
+    "category": "Lookup",
     "order": 70,
     "title": "Setlist.fm search",
     "description": "Recent concert setlists for an artist.",

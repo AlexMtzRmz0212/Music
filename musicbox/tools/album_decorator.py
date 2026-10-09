@@ -2,6 +2,7 @@ from ..albums import AlbumDecorator
 
 META = {
     "id": "album_decorator",
+    "category": "Album library",
     "order": 30,
     "title": "Album decorator",
     "description": "Finds cover art on Spotify and sets it as the cover and icon of album pages in Notion.",

@@ -2,6 +2,7 @@ from ..albums.base import BaseNotionManager
 
 META = {
     "id": "album_stats",
+    "category": "Album library",
     "order": 10,
     "title": "Album library stats",
     "description": "Counts the albums in your Notion library: listened, rated, and missing cover art.",

@@ -18,12 +18,22 @@ function hint(on) {
   return false;
 }
 
+const TAB = "mh-tab";
+function savedTab() {
+  try {
+    return localStorage.getItem(TAB) || "All";
+  } catch {
+    return "All";
+  }
+}
+
 export default function App() {
   const [phase, setPhase] = useState(() => (hint() ? "checking" : "public")); // checking | public | owner
   const [authRequired, setAuthRequired] = useState(true); // false only in password-less local dev
   const [login, setLogin] = useState(null); // null, or { message? } while the dialog is open
   const [tools, setTools] = useState(null);
   const [error, setError] = useState("");
+  const [tab, setTab] = useState(savedTab);
 
   const enter = useCallback((required) => {
     setAuthRequired(required);
@@ -61,6 +71,17 @@ export default function App() {
     setError("");
     api.tools().then(setTools).catch((e) => setError(e.message));
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const categories = [...new Set((tools || []).map((t) => t.category || "Other"))];
+  const activeTab = tab === "All" || categories.includes(tab) ? tab : "All";
+  const pickTab = (name) => {
+    setTab(name);
+    try {
+      localStorage.setItem(TAB, name);
+    } catch {
+      // storage blocked: the tab just resets next visit
+    }
+  };
 
   const openOwner = async () => {
     try {
@@ -112,9 +133,26 @@ export default function App() {
       {error && <p className="error">{error}</p>}
       {!tools && !error && <p className="note">Loading…</p>}
 
+      {tools && (
+        <nav className="tabs">
+          {["All", ...categories].map((name) => (
+            <button key={name} className={`tab ${name === activeTab ? "active" : ""}`} onClick={() => pickTab(name)}>
+              {name}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {/* every card stays mounted (just hidden) so a tool's output survives switching tabs */}
       <main className="grid">
         {tools?.map((tool) => (
-          <ToolCard key={`${phase}-${tool.id}`} tool={tool} api={api} live={phase === "owner"} />
+          <ToolCard
+            key={`${phase}-${tool.id}`}
+            tool={tool}
+            api={api}
+            live={phase === "owner"}
+            hidden={activeTab !== "All" && (tool.category || "Other") !== activeTab}
+          />
         ))}
       </main>
 

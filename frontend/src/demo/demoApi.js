@@ -1,24 +1,24 @@
 // In-memory stand-in for the tools API, used by the public demo. Same shapes as
 // the real API; nothing leaves the browser and no account is touched.
 
-const T = (id, title, description, writes, params) => ({ id, title, description, writes, params, missing: [] });
+const T = (id, category, title, description, writes, params) => ({ id, category, title, description, writes, params, missing: [] });
 const dry = { name: "dry_run", label: "Dry run (don't write)", type: "bool", default: true };
 
 const TOOLS = [
-  T("album_stats", "Album library stats", "Counts the albums in your Notion library: listened, rated, and missing cover art.", false, []),
-  T("album_sorter", "Album sorter", "Gives every listened album a unique zero-padded rank. Dry run shows the new ranking without touching Notion.", true,
+  T("album_stats", "Album library", "Album library stats", "Counts the albums in your Notion library: listened, rated, and missing cover art.", false, []),
+  T("album_sorter", "Album library", "Album sorter", "Gives every listened album a unique zero-padded rank. Dry run shows the new ranking without touching Notion.", true,
     [{ name: "compact", label: "Compact ranks (1..N, no gaps)", type: "bool", default: false }, dry]),
-  T("album_decorator", "Album decorator", "Finds cover art on Spotify and sets it as the cover and icon of album pages in Notion.", true,
+  T("album_decorator", "Album library", "Album decorator", "Finds cover art on Spotify and sets it as the cover and icon of album pages in Notion.", true,
     [{ name: "limit", label: "Max albums this run (0 = all)", type: "number", default: 10 },
      { name: "update_existing", label: "Also replace existing covers", type: "bool", default: false }, dry]),
-  T("streams_songs", "Most streamed songs", "Scrapes the most-streamed Spotify songs and fills a Notion table.", true, [dry]),
-  T("streams_albums", "Most streamed albums", "Scrapes all-time Spotify album streams and fills a Notion table.", true, [dry]),
-  T("spotify_search", "Spotify search", "Looks up albums, artists or tracks in the Spotify catalogue.", false,
+  T("streams_songs", "Charts", "Most streamed songs", "Scrapes the most-streamed Spotify songs and fills a Notion table.", true, [dry]),
+  T("streams_albums", "Charts", "Most streamed albums", "Scrapes all-time Spotify album streams and fills a Notion table.", true, [dry]),
+  T("spotify_search", "Lookup", "Spotify search", "Looks up albums, artists or tracks in the Spotify catalogue.", false,
     [{ name: "query", label: "Search", type: "text", default: "Twenty One Pilots" },
      { name: "kind", label: "Type", type: "select", options: ["album", "artist", "track"], default: "album" }]),
-  T("setlistfm", "Setlist.fm search", "Recent concert setlists for an artist.", false,
+  T("setlistfm", "Lookup", "Setlist.fm search", "Recent concert setlists for an artist.", false,
     [{ name: "artist", label: "Artist", type: "text", default: "Radiohead" }]),
-  T("genius_lyrics", "Genius lyrics", "Finds a song on Genius and shows its page and lyrics.", false,
+  T("genius_lyrics", "Lookup", "Genius lyrics", "Finds a song on Genius and shows its page and lyrics.", false,
     [{ name: "artist", label: "Artist", type: "text", default: "Eminem" }, { name: "song", label: "Song", type: "text", default: "Lose Yourself" }]),
 ];
 

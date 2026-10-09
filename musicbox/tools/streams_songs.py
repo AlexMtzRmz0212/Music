@@ -13,6 +13,7 @@ HEADERS = {"User-Agent": "MusicHub/1.0 (personal music dashboard)"}
 
 META = {
     "id": "streams_songs",
+    "category": "Charts",
     "order": 40,
     "title": "Most streamed songs",
     "description": "Scrapes Wikipedia's list of the most-streamed Spotify songs and fills your Notion songs table, row by row.",

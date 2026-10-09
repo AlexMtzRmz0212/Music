@@ -2,6 +2,7 @@ from .. import config
 
 META = {
     "id": "genius_lyrics",
+    "category": "Lookup",
     "order": 80,
     "title": "Genius lyrics",
     "description": "Finds a song on Genius and shows its page and lyrics.",

@@ -2,6 +2,7 @@ from ..albums import AlbumSorter
 
 META = {
     "id": "album_sorter",
+    "category": "Album library",
     "order": 20,
     "title": "Album sorter",
     "description": "Gives every listened album a unique zero-padded rank in 'Alex Top'. "

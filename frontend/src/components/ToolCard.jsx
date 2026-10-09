@@ -66,7 +66,7 @@ function Result({ data }) {
   );
 }
 
-export default function ToolCard({ tool, api, live }) {
+export default function ToolCard({ tool, api, live, hidden }) {
   const [values, setValues] = useState(() => Object.fromEntries(tool.params.map((p) => [p.name, p.default])));
   const [running, setRunning] = useState(false);
   const [data, setData] = useState(null);
@@ -86,7 +86,7 @@ export default function ToolCard({ tool, api, live }) {
   };
 
   return (
-    <section className={`card ${unconfigured ? "off" : ""}`}>
+    <section className={`card ${unconfigured ? "off" : ""}`} hidden={hidden}>
       <h2>
         {tool.title} {tool.writes && <small className="tag">can write</small>}
       </h2>

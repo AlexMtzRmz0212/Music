@@ -5,6 +5,7 @@ A tool module defines
 
     META = {
         "id": "spotify_search",            # url-safe, unique
+        "category": "Lookup",              # tools with the same category share a tab
         "title": "...", "description": "...",
         "needs": ["SPOTIFY_CLIENT_ID"],    # settings it cannot run without
         "writes": False,                   # True if it can change data elsewhere (Notion...)

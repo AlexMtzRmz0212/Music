@@ -2,6 +2,7 @@ from .. import spotify
 
 META = {
     "id": "spotify_search",
+    "category": "Lookup",
     "order": 60,
     "title": "Spotify search",
     "description": "Looks up albums, artists or tracks in the Spotify catalogue.",

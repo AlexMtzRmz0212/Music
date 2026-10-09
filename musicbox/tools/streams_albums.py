@@ -9,6 +9,7 @@ URL = "https://kworb.net/spotify/albums.html"
 
 META = {
     "id": "streams_albums",
+    "category": "Charts",
     "order": 50,
     "title": "Most streamed albums",
     "description": "Scrapes kworb.net's all-time Spotify album streams and fills your Notion albums table, row by row.",
