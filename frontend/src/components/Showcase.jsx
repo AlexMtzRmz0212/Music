@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FeatherIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import { showcaseApi } from "../api";
 import { demoApi } from "../demo/demoApi";
+import Descent from "../descent/Descent";
+import AetherSky from "../descent/scenes/AetherSky";
+import { WorldProvider } from "../descent/world";
 
 // Read-only view of the Notion album library. Nothing here writes anywhere;
-// the filters only change what this page shows.
-
-const FEATURED = 6; // in the default ranked view the top albums get double-size tiles
+// the filters only change what this page shows. Sorted by my ranking, the albums are laid out as a descent
+// from Mount Olympus down to Hades (see ../descent); any other sort shows a plain cover grid.
 
 const byText = (get) => (a, b) => get(a).localeCompare(get(b));
 // albums missing the value always sink to the bottom, whatever the direction
@@ -24,8 +27,8 @@ const SORTS = {
   recent: { label: "Latest Album of the Day", cmp: byNumber((a) => time(a.album_of_day), -1) },
   released: { label: "Newest release", cmp: byNumber((a) => time(a.release_date), -1) },
   oldest: { label: "Oldest release", cmp: byNumber((a) => time(a.release_date)) },
-  artist: { label: "Artist A–Z", cmp: byText((a) => a.artist) },
-  name: { label: "Album A–Z", cmp: byText((a) => a.name) },
+  artist: { label: "Artist A-Z", cmp: byText((a) => a.artist) },
+  name: { label: "Album A-Z", cmp: byText((a) => a.name) },
 };
 
 const year = (a) => (a.release_date ? Number(a.release_date.slice(0, 4)) : null);
@@ -36,6 +39,12 @@ function formatDate(iso) {
   const date = new Date(`${iso.slice(0, 10)}T00:00:00`);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function formatStamp(iso) {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 function hue(text) {
@@ -52,6 +61,8 @@ export function Cover({ album, eager = false }) {
       <img
         src={album.cover}
         alt={`${album.name} cover`}
+        width={300}
+        height={300}
         loading={eager ? "eager" : "lazy"}
         decoding="async"
         referrerPolicy="no-referrer"
@@ -64,6 +75,33 @@ export function Cover({ album, eager = false }) {
     <span className="sc-blank" style={{ "--h": hue(album.name + album.artist) }} role="img" aria-label={`${album.name} (no cover)`}>
       {initials}
     </span>
+  );
+}
+
+/** One album on the wall. The gods on Olympus are plaques with a big engraved rank. */
+export function Tile({ album, big = false, eager = false, onOpen }) {
+  return (
+    <button className={`tile${big ? " plaque" : ""}`} onClick={() => onOpen(album)}>
+      <span className="sc-cover">
+        <Cover album={album} eager={eager} />
+        {album.rank != null && !big && (
+          <span className="sc-rank" aria-label={`Rank ${album.rank}`}>
+            {album.rank}
+          </span>
+        )}
+      </span>
+      <span className="sc-caption">
+        {big && album.rank != null && (
+          <span className="sc-numeral" aria-label={`Rank ${album.rank}`}>
+            {album.rank}
+          </span>
+        )}
+        <span className="sc-caption-text">
+          <span className="sc-name">{album.name}</span>
+          <span className="sc-by">{album.artist}</span>
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -95,6 +133,10 @@ function Detail({ album, onClose }) {
           <Cover album={album} eager />
         </div>
         <div className="sc-detail-info">
+          <button className="icon-btn sc-x" onClick={() => dialog.current.close()} aria-label="Close">
+            <XIcon aria-hidden="true" />
+          </button>
+          {album.rank != null && <p className="sc-detail-rank">No. {album.rank}</p>}
           <h2>{album.name}</h2>
           <p className="sc-artist">{album.artist}</p>
           {album.genres.length > 0 && (
@@ -112,9 +154,6 @@ function Detail({ album, onClose }) {
               </div>
             ))}
           </dl>
-          <button className="ghost" onClick={() => dialog.current.close()}>
-            Close
-          </button>
         </div>
       </div>
     </dialog>
@@ -122,7 +161,7 @@ function Detail({ album, onClose }) {
 }
 
 export default function Showcase({ hidden }) {
-  const [data, setData] = useState(null); // { albums, sample }
+  const [data, setData] = useState(null); // { albums, sample, updated }
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("rank");
@@ -135,7 +174,7 @@ export default function Showcase({ hidden }) {
     let live = true;
     showcaseApi
       .albums()
-      .then(({ albums }) => live && setData({ albums, sample: false }))
+      .then(({ albums, updated_at }) => live && setData({ albums, sample: false, updated: formatStamp(updated_at) }))
       .catch(async (e) => {
         // Not configured, offline, or Notion is down: show sample albums rather than an empty tab.
         const { albums } = await demoApi.showcase();
@@ -187,7 +226,8 @@ export default function Showcase({ hidden }) {
   }, [albums, query, sort, genre, decade, status]);
 
   const filtering = Boolean(query || genre || decade || status);
-  const ranked = sort === "rank" && !filtering; // the default view: top albums get big tiles
+  const descending = sort === "rank"; // ranked: the descent from Olympus to Hades
+  const descent = useRef(null);
 
   const reset = () => {
     setQuery("");
@@ -195,118 +235,162 @@ export default function Showcase({ hidden }) {
     setDecade(null);
     setStatus("");
   };
+  // Hermes' "Find it in the descent": clear what could hide it, then let the descent bring it into view
+  const findToday = () => {
+    const id = facets.ofTheDay.id;
+    const hiddenNow = !descending || !filtered.some((a) => a.id === id);
+    if (hiddenNow) {
+      reset();
+      setSort("rank");
+    }
+    setTimeout(() => descent.current?.find(id), hiddenNow ? 80 : 0);
+  };
 
   return (
     <section className="sc" hidden={hidden} aria-label="Album showcase">
-      {!data && <p className="note">Loading albums…</p>}
-      {data?.sample && (
-        <p className="note">
-          {error ? `Couldn't load the album library (${error}). ` : "The album library isn't connected here. "}
-          These are sample albums.
-        </p>
-      )}
-
-      {data && (
-        <>
-          {facets.ofTheDay && (
-            <button className="sc-today" onClick={() => setSelected(facets.ofTheDay)}>
-              <span className="sc-cover">
-                <Cover album={facets.ofTheDay} eager />
-              </span>
-              <span className="sc-today-text">
-                <span className="sc-kicker">Album of the Day · {formatDate(facets.ofTheDay.album_of_day)}</span>
-                <strong>{facets.ofTheDay.name}</strong>
-                <span>{facets.ofTheDay.artist}</span>
-                {facets.ofTheDay.genres.length > 0 && <span className="sc-dim">{facets.ofTheDay.genres.join(", ")}</span>}
-              </span>
-            </button>
-          )}
-
-          <p className="sc-stats">
-            {albums.length} albums by {facets.artists} artists, {facets.listened} listened to
-            {!data.sample && facets.noCover > 0 ? `, ${facets.noCover} without cover art` : ""}.
+      <WorldProvider active={descending && !hidden && Boolean(data)}>
+        {descending && data && <AetherSky />}
+        {!data && (
+          <p className="note" role="status">
+            Loading albums…
           </p>
+        )}
+        {data?.sample && (
+          <p className="note">
+            {error ? `Couldn’t load the album library (${error}). ` : "The album library isn’t connected here. "}
+            These are sample albums.
+          </p>
+        )}
 
-          <div className="sc-controls">
-            <input
-              type="search"
-              className="sc-search"
-              placeholder="Search album or artist"
-              aria-label="Search album or artist"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value)}>
-              {Object.entries(SORTS).map(([key, { label }]) => (
-                <option key={key} value={key}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <select aria-label="Genre" value={genre} onChange={(e) => setGenre(e.target.value)}>
-              <option value="">All genres</option>
-              {facets.genres.map(([name, n]) => (
-                <option key={name} value={name}>
-                  {name} ({n})
-                </option>
-              ))}
-            </select>
-            <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Any status</option>
-              {facets.statuses.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {facets.decades.length > 0 && (
-            <div className="sc-decades" role="group" aria-label="Decade">
-              {facets.decades.map((d) => (
-                <button
-                  key={d}
-                  className={`chip ${decade === d ? "active" : ""}`}
-                  aria-pressed={decade === d}
-                  onClick={() => setDecade(decade === d ? null : d)}
-                >
-                  {d}s
-                </button>
-              ))}
-            </div>
-          )}
-
-          {filtering && (
-            <p className="sc-stats">
-              {filtered.length} of {albums.length} albums.{" "}
-              <button className="link" onClick={reset}>
-                Clear filters
-              </button>
-            </p>
-          )}
-
-          {filtered.length === 0 ? (
-            <p className="note">No albums match. Try a different search or clear the filters.</p>
-          ) : (
-            <ul className="sc-grid">
-              {filtered.map((album, i) => (
-                <li key={album.id} className={ranked && i < FEATURED ? "big" : ""}>
-                  <button className="tile" onClick={() => setSelected(album)}>
-                    <span className="sc-cover">
-                      <Cover album={album} eager={i < 12} />
-                      {album.rank != null && <span className="sc-rank">{album.rank}</span>}
+        {data && (
+          <>
+            {facets.ofTheDay && (
+              <div className="sc-today-wrap">
+                <button className="sc-today plaque" onClick={() => setSelected(facets.ofTheDay)}>
+                  <span className="sc-cover">
+                    <Cover album={facets.ofTheDay} eager />
+                  </span>
+                  <span className="sc-today-text">
+                    <span className="sc-kicker">Album of the Day, {formatDate(facets.ofTheDay.album_of_day)}</span>
+                    <strong>{facets.ofTheDay.name}</strong>
+                    <span className="sc-today-artist">{facets.ofTheDay.artist}</span>
+                    {facets.ofTheDay.genres.length > 0 && <span className="sc-dim">{facets.ofTheDay.genres.join(", ")}</span>}
+                    {facets.ofTheDay.rank != null && <span className="sc-today-rank">Ranked No. {facets.ofTheDay.rank}</span>}
+                    <span className="sc-hermes">
+                      <FeatherIcon aria-hidden="true" />
+                      Delivered by Hermes
                     </span>
-                    <span className="sc-name">{album.name}</span>
-                    <span className="sc-by">{album.artist}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+                  </span>
+                </button>
+                <button className="link sc-find" onClick={findToday}>
+                  Find it in the descent
+                </button>
+              </div>
+            )}
 
-      {selected && <Detail key={selected.id} album={selected} onClose={() => setSelected(null)} />}
+            <p className="sc-stats">
+              {albums.length} albums by {facets.artists} artists, {facets.listened} listened to
+              {!data.sample && facets.noCover > 0 ? `, ${facets.noCover} without cover art` : ""}.
+              {data.updated && <span className="sc-updated"> Updated {data.updated}.</span>}
+            </p>
+
+            <div className="sc-controls">
+              <label className="field sc-search">
+                <span>Search</span>
+                <span className="input-icon">
+                  <MagnifyingGlassIcon aria-hidden="true" />
+                  <input
+                    type="search"
+                    name="q"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="Album or artist…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                </span>
+              </label>
+              <label className="field">
+                <span>Sort</span>
+                <select value={sort} onChange={(e) => setSort(e.target.value)}>
+                  {Object.entries(SORTS).map(([key, { label }]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Genre</span>
+                <select value={genre} onChange={(e) => setGenre(e.target.value)}>
+                  <option value="">All genres</option>
+                  {facets.genres.map(([name, n]) => (
+                    <option key={name} value={name}>
+                      {name} ({n})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Status</span>
+                <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="">Any status</option>
+                  {facets.statuses.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {facets.decades.length > 0 && (
+              <div className="seg sc-decades" role="group" aria-label="Decade">
+                {facets.decades.map((d) => (
+                  <button key={d} aria-pressed={decade === d} onClick={() => setDecade(decade === d ? null : d)}>
+                    {d}s
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {filtering && (
+              <p className="sc-stats" aria-live="polite">
+                {filtered.length} of {albums.length} albums.{" "}
+                <button className="link" onClick={reset}>
+                  Clear filters
+                </button>
+              </p>
+            )}
+
+            {filtered.length === 0 && (
+              <p className="note">No albums match. Try a different search or clear the filters.</p>
+            )}
+            {descending ? (
+              <Descent
+                ref={descent}
+                albums={filtered}
+                all={albums}
+                onOpen={setSelected}
+                hidden={hidden}
+                filtering={filtering}
+              />
+            ) : (
+              filtered.length > 0 && (
+                <ul className="sc-grid">
+                  {filtered.map((album, i) => (
+                    <li key={album.id}>
+                      <Tile album={album} eager={i < 12} onOpen={setSelected} />
+                    </li>
+                  ))}
+                </ul>
+              )
+            )}
+          </>
+        )}
+
+        {selected && <Detail key={selected.id} album={selected} onClose={() => setSelected(null)} />}
+      </WorldProvider>
     </section>
   );
 }

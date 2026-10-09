@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRightIcon, ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { coversApi } from "../api";
 import EditionPicker from "./EditionPicker";
 
@@ -14,8 +15,8 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
 
 function reasonText(item) {
   if (item.reason === "none") return "This album has no cover yet.";
-  if (item.reason === "stock") return "This album has one of Notion's stock photos, not album art.";
-  if (item.reason === "placeholder") return "This album still has the \"no album yet\" placeholder cover.";
+  if (item.reason === "stock") return "This album has one of Notion’s stock photos, not album art.";
+  if (item.reason === "placeholder") return "This album still has the “no album yet” placeholder cover.";
   if (item.reason === "duplicate") return `This cover is the same image as ${item.shared_with.join(", ")}.`;
   if (item.reason === "title") return "Spotify spells this title differently.";
   if (item.reason === "cover") return "Spotify has a different cover for this album.";
@@ -57,7 +58,7 @@ function SwipeCard({ exit, canRight, onDecide, children }) {
 
   return (
     <div
-      className="cr-card cr-top"
+      className="cr-card cr-top plaque"
       style={style}
       onPointerDown={(e) => {
         if (exit || e.button > 0) return;
@@ -158,7 +159,7 @@ export default function CoverReview({ items, canSuggest, rejected, onReject, onB
         coversApi
           .apply(card.id, changes)
           .then(() => onResolved(card.id, changes))
-          .catch((e) => setError(`Couldn't save "${card.name}": ${e.message}. It's back in the queue.`))
+          .catch((e) => setError(`Couldn’t save “${card.name}”: ${e.message}. It’s back in the queue.`))
           .finally(() =>
             setWriting((w) => {
               const copy = new Set(w);
@@ -186,7 +187,7 @@ export default function CoverReview({ items, canSuggest, rejected, onReject, onB
     return (
       <section className="cr">
         <p className="note">
-          Spotify isn't set up on this server, so there's nothing to propose. Add SPOTIFY_CLIENT_ID and
+          Spotify isn’t set up on this server, so there’s nothing to propose. Add SPOTIFY_CLIENT_ID and
           SPOTIFY_CLIENT_SECRET to the settings.
         </p>
       </section>
@@ -197,9 +198,13 @@ export default function CoverReview({ items, canSuggest, rejected, onReject, onB
     <section className="cr" aria-label="Cover and title review">
       <p className="cr-help">
         {queue.length > 0 ? `${queue.length} left. ` : ""}Swipe right to apply what the card shows, left to reject it.
-        Rejected albums are left as they are and aren't offered again. Arrow keys work too.
+        Rejected albums are left as they are and aren’t offered again. The <kbd>←</kbd> <kbd>→</kbd> keys work too.
       </p>
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
       {!card ? (
         <div className="cr-done">
@@ -217,13 +222,14 @@ export default function CoverReview({ items, canSuggest, rejected, onReject, onB
       ) : (
         <>
           <div className="cr-deck">
-            {next && <div className="cr-card cr-peek" aria-hidden="true" />}
+            {next && <div className="cr-card cr-peek plaque" aria-hidden="true" />}
             <SwipeCard key={card.id} exit={exit} canRight={canRight} onDecide={decide}>
               <h2>{card.name}</h2>
               <p className="cr-artist">{card.artist}</p>
               {newTitle && (
                 <p className="cr-title-change">
-                  Title: <s>{card.name}</s> → <strong>{newTitle}</strong>
+                  Title: <s>{card.name}</s> <ArrowRightIcon aria-hidden="true" />
+                  <span className="sr-only">becomes</span> <strong>{newTitle}</strong>
                 </p>
               )}
               <div className="cr-pair">
@@ -236,7 +242,7 @@ export default function CoverReview({ items, canSuggest, rejected, onReject, onB
                 {coverChange && (
                   <>
                     <span className="cr-arrow" aria-hidden="true">
-                      →
+                      <ArrowRightIcon />
                     </span>
                     <figure>
                       <span className="cr-art">
@@ -268,18 +274,33 @@ export default function CoverReview({ items, canSuggest, rejected, onReject, onB
                 <p className="cr-match">
                   Spotify match: <strong>{sel.name}</strong> by {match.artist}
                   {sel.release_date ? ` (${sel.release_date.slice(0, 4)})` : ""}
-                  {!coverChange && !newTitle && " — nothing differs from what the album has now."}
+                  {!coverChange && !newTitle && ". Nothing differs from what the album has now."}
+                  {sel.url && (
+                    <>
+                      {" "}
+                      <a
+                        className="cr-link"
+                        href={sel.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        Open in Spotify
+                        <ArrowSquareOutIcon aria-hidden="true" />
+                      </a>
+                    </>
+                  )}
                 </p>
               )}
               {coverChange && match.current_release && match.current_release !== match.name && (
                 <p className="cr-match">
-                  Your current cover is from Spotify's <strong>{match.current_release}</strong>.
+                  Your current cover is from Spotify’s <strong>{match.current_release}</strong>.
                 </p>
               )}
               {proposal?.state === "ready" && !match && <p className="cr-match">Spotify has no match for this album.</p>}
               {proposal?.state === "error" && (
                 <p className="cr-match">
-                  Couldn't ask Spotify ({proposal.error}).{" "}
+                  Couldn’t ask Spotify ({proposal.error}).{" "}
                   <button className="link" onPointerDown={(e) => e.stopPropagation()} onClick={() => retry(card.id)}>
                     Try again
                   </button>
@@ -289,10 +310,10 @@ export default function CoverReview({ items, canSuggest, rejected, onReject, onB
           </div>
 
           <div className="cr-actions">
-            <button className="ghost no" onClick={() => decide("left")} disabled={Boolean(exit)}>
+            <button className="ghost hell" onClick={() => decide("left")} disabled={Boolean(exit)}>
               Reject
             </button>
-            <button className="yes" onClick={() => decide("right")} disabled={!canRight || Boolean(exit)}>
+            <button className="fame" onClick={() => decide("right")} disabled={!canRight || Boolean(exit)}>
               {applyLabel}
             </button>
           </div>

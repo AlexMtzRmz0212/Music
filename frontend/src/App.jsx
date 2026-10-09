@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BinocularsIcon, LockSimpleIcon, SignOutIcon } from "@phosphor-icons/react";
 import { UNAUTHORIZED_EVENT, auth, coversApi, realApi, sorterApi } from "./api";
 import { hydrate, loadFindings, loadRejected, saveFindings, saveRejected } from "./coverState";
 import { scanLibrary } from "./coverScan";
@@ -8,6 +9,7 @@ import CoverReview from "./components/CoverReview";
 import Login from "./components/Login";
 import Showcase from "./components/Showcase";
 import ToolCard from "./components/ToolCard";
+import Wordmark from "./components/Wordmark";
 
 // Everyone sees the demo. The real tools are behind the owner login; this flag
 // only says "this browser signed in before", so visitors never poll the server.
@@ -23,18 +25,50 @@ function hint(on) {
   return false;
 }
 
-// The showcase is public and always first. "Cover art" is owner-only and exists only while some album
-// needs a cover or title correction. The album sorter runs on sample albums until the owner signs in.
-// The other tabs are the tool categories.
-const SHOWCASE = "Showcase";
-const COVERS = "Cover art";
-const SORTER = "Album sorter";
+// The Hall (the showcase) is public and always first. Purgatory (the album sorter) only shows while some ranks
+// are shared by several albums, and Cover art (owner only) while some album needs a cover or title fix; Scan
+// library checks both again. Purgatory runs on sample albums until the owner signs in. Tools has every tool,
+// filtered by category inside the tab.
+const SHOWCASE = "hall";
+const COVERS = "covers";
+const SORTER = "purgatory";
+const TOOLS = "tools";
+const ALL = "All";
+const LABELS = { [SHOWCASE]: "The Hall", [SORTER]: "Purgatory", [COVERS]: "Cover art", [TOOLS]: "Tools" };
 const TAB = "mh-tab";
+const TOOL_FILTER = "mh-tools-filter";
+// tabs used to be saved by label, and every tool category was a tab of its own
+const OLD_TABS = { Showcase: SHOWCASE, "Album sorter": SORTER, "Cover art": COVERS };
+// the open tab is in the URL hash (#hall, #purgatory...) so a tab can be linked, and in localStorage for next visit
+const fromHash = () => {
+  const id = window.location.hash.slice(1);
+  return LABELS[id] ? id : null;
+};
 function savedTab() {
+  const linked = fromHash();
+  if (linked) return linked;
   try {
-    return localStorage.getItem(TAB) || SHOWCASE;
+    const saved = localStorage.getItem(TAB);
+    if (!saved) return SHOWCASE;
+    if (LABELS[saved]) return saved;
+    return OLD_TABS[saved] || TOOLS;
   } catch {
     return SHOWCASE;
+  }
+}
+function savedFilter() {
+  try {
+    const old = localStorage.getItem(TAB);
+    return localStorage.getItem(TOOL_FILTER) || (old && !LABELS[old] && !OLD_TABS[old] ? old : ALL);
+  } catch {
+    return ALL;
+  }
+}
+function remember(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // storage blocked: it just resets next visit
   }
 }
 
@@ -45,7 +79,11 @@ export default function App() {
   const [tools, setTools] = useState(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState(savedTab);
+  const [toolFilter, setToolFilter] = useState(savedFilter);
   const [covers, setCovers] = useState(null); // owner only: { issues, albums, can_suggest }
+  const [ranks, setRanks] = useState(null); // { ties, open } from the album sorter: ranks shared by several albums
+  const [refresh, setRefresh] = useState(0); // bumped by a scan so the sorter reloads the ranks
+  const [stay, setStay] = useState(null); // the tab I'm on keeps showing even once its last problem is fixed
   const [findings, setFindings] = useState(loadFindings); // what the last scan found
   const [rejected, setRejected] = useState(loadRejected); // albums whose correction I swiped away
   const [scan, setScan] = useState(null); // { done, total } while scanning
@@ -85,6 +123,7 @@ export default function App() {
   useEffect(() => {
     if (phase === "checking") return;
     setTools(null);
+    setRanks(null); // the sorter remounts with the other data set and reports again
     setError("");
     api.tools().then(setTools).catch((e) => setError(e.message));
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -134,22 +173,35 @@ export default function App() {
     setFindings(list);
     saveFindings(list);
   };
+  // A scan re-reads the library: cover problems and shared ranks from Notion, then (with Spotify set up) every
+  // album's cover and title against Spotify. Cover art and Purgatory only show while it finds something.
   const startScan = async () => {
     if (scan || !covers) return;
     const ctl = new AbortController();
     scanCtl.current = ctl;
     setScanNote(null);
     setScan({ done: 0, total: 0 });
-    const exclude = new Set([...covers.issues.map((i) => i.id), ...rejected]);
+    setRefresh((n) => n + 1);
     try {
-      const result = await scanLibrary(covers.albums, {
-        exclude,
-        signal: ctl.signal,
-        onProgress: (done, total) => setScan({ done, total }),
-      });
-      const fresh = new Set(result.findings.map((f) => f.id));
-      storeFindings([...findings.filter((f) => !fresh.has(f.id)), ...result.findings]);
-      setScanNote({ ...result, stopped: ctl.signal.aborted });
+      let queue = covers;
+      try {
+        queue = await coversApi.queue();
+        setCovers(queue);
+      } catch {
+        // keep the queue we have
+      }
+      let result = { findings: [], failed: 0, scanned: 0 };
+      if (queue.can_suggest) {
+        const exclude = new Set([...queue.issues.map((i) => i.id), ...rejected]);
+        result = await scanLibrary(queue.albums, {
+          exclude,
+          signal: ctl.signal,
+          onProgress: (done, total) => setScan({ done, total }),
+        });
+        const fresh = new Set(result.findings.map((f) => f.id));
+        storeFindings([...findings.filter((f) => !fresh.has(f.id)), ...result.findings]);
+      }
+      setScanNote({ ...result, issues: queue.issues.length, spotify: queue.can_suggest, stopped: ctl.signal.aborted });
     } finally {
       setScan(null);
     }
@@ -157,20 +209,53 @@ export default function App() {
 
   const categories = [...new Set((tools || []).map((t) => t.category || "Other"))];
   // the tab stays while you are on it, so finishing the last card doesn't throw you off the page
-  const showCovers = Boolean(covers) && (reviewItems.length > 0 || tab === COVERS);
-  const activeTab = [SHOWCASE, SORTER, "All"].includes(tab) || categories.includes(tab) || (tab === COVERS && showCovers) ? tab : SHOWCASE;
+  const showCovers = Boolean(covers) && (reviewItems.length > 0 || stay === COVERS);
+  const showSorter = Boolean(ranks) && (ranks.ties > 0 || stay === SORTER);
+  const activeTab =
+    [SHOWCASE, TOOLS].includes(tab) || (tab === COVERS && showCovers) || (tab === SORTER && showSorter) ? tab : SHOWCASE;
   const onShowcase = activeTab === SHOWCASE;
   const onCovers = activeTab === COVERS;
   const onSorter = activeTab === SORTER;
-  const onTools = !onShowcase && !onCovers && !onSorter;
+  const onTools = activeTab === TOOLS;
+  const activeFilter = toolFilter === ALL || categories.includes(toolFilter) ? toolFilter : ALL;
   const pickTab = (name) => {
     setTab(name);
-    try {
-      localStorage.setItem(TAB, name);
-    } catch {
-      // storage blocked: the tab just resets next visit
-    }
+    remember(TAB, name);
   };
+  useEffect(() => {
+    const onHash = () => {
+      const id = fromHash();
+      if (id) pickTab(id);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setStay(activeTab), [activeTab]);
+  // once we know a linked or saved tab isn't offered (nothing to fix), forget it, so a later scan doesn't jump there
+  const tabKnown = tab === SORTER ? ranks !== null : tab === COVERS ? phase === "public" || covers !== null : true;
+  useEffect(() => {
+    if (phase !== "checking" && tabKnown && tab !== activeTab) pickTab(activeTab);
+  }, [phase, tabKnown, tab, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (phase !== "checking" && window.location.hash !== `#${activeTab}`) {
+      window.history.replaceState(null, "", `#${activeTab}`);
+    }
+  }, [activeTab, phase, tab]); // `tab` too: a link to a tab that isn't offered right now shows the Hall's address
+  const pickFilter = (name) => {
+    setToolFilter(name);
+    remember(TOOL_FILTER, name);
+  };
+  const owner = phase === "owner";
+  const intro = {
+    [SHOWCASE]: "My album library, ranked.",
+    [SORTER]: owner
+      ? "Albums that share a rank wait here. Pick the better one of each pair to break the tie."
+      : "Albums that share a rank wait here. Pick the better one of each pair to break the tie. This demo uses sample albums.",
+    [COVERS]: "Fix covers and titles from Spotify, one album at a time.",
+    [TOOLS]: owner
+      ? "My music tools: Notion album library, Spotify, streaming charts, setlists and lyrics."
+      : "My music tools: Notion album library, Spotify, streaming charts, setlists and lyrics. Here they run on sample data, so press Run on any of them.",
+  }[activeTab];
 
   const openOwner = async () => {
     try {
@@ -178,7 +263,7 @@ export default function App() {
       if (me.authenticated) return enter(me.required);
       setLogin({});
     } catch {
-      setLogin({ message: "Couldn't reach the API. If you're running locally, start it with DEV.bat." });
+      setLogin({ message: "Couldn’t reach the API. If you’re running locally, start it with DEV.bat." });
     }
   };
 
@@ -194,45 +279,77 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
-        <h1>🎵 Music Hub</h1>
-        <span className={`badge ${phase === "owner" ? "live" : ""}`}>{phase === "owner" ? "Live" : "Public view"}</span>
-        <span className="spacer" />
-        {phase === "owner" ? (
-          <>
-            {covers?.can_suggest && (
+      <a className="skip" href="#main">
+        Skip to content
+      </a>
+      <header className="top">
+        <Wordmark />
+        {phase !== "checking" && (
+          <nav className="tabs" aria-label="Sections">
+            {[SHOWCASE, ...(showSorter ? [SORTER] : []), ...(showCovers ? [COVERS] : []), TOOLS].map((id) => (
+              <a
+                key={id}
+                href={`#${id}`}
+                className="tab"
+                aria-current={id === activeTab ? "page" : undefined}
+                onClick={() => pickTab(id)}
+              >
+                {LABELS[id]}
+                {id === COVERS && pending > 0 && (
+                  <span className="tab-count" aria-label={`, ${pending} to review`}>
+                    {pending}
+                  </span>
+                )}
+                {id === SORTER && ranks.open > 0 && (
+                  <span className="tab-count" aria-label={`, ${ranks.open} ${ranks.open === 1 ? "tie" : "ties"} to break`}>
+                    {ranks.open}
+                  </span>
+                )}
+              </a>
+            ))}
+          </nav>
+        )}
+        <div className="top-actions">
+          <span className={`badge${owner ? " live" : ""}`}>{owner ? "Live" : "Public view"}</span>
+          {owner ? (
+            <>
+              {covers && (
+                <button
+                  className="ghost"
+                  onClick={startScan}
+                  disabled={Boolean(scan)}
+                  title="Look for shared ranks and for covers or titles that need fixing"
+                >
+                  <BinocularsIcon aria-hidden="true" />
+                  <span className="btn-label">Scan library</span>
+                </button>
+              )}
               <button
                 className="ghost"
-                onClick={startScan}
-                disabled={Boolean(scan)}
-                title="Check every album's cover and title against Spotify"
+                onClick={signOut}
+                title={authRequired ? "End the owner session" : "Login is off locally (no OWNER_PASSWORD); this goes back to the demo"}
               >
-                Scan library
+                <SignOutIcon aria-hidden="true" />
+                <span className="btn-label">{authRequired ? "Log out" : "Back to demo"}</span>
               </button>
-            )}
-            <button
-              className="ghost"
-              onClick={signOut}
-              title={authRequired ? "End the owner session" : "Login is off locally (no OWNER_PASSWORD); this goes back to the demo"}
-            >
-              {authRequired ? "Log out" : "Back to demo"}
+            </>
+          ) : (
+            <button className="ghost" onClick={openOwner} title="Owner sign-in">
+              <LockSimpleIcon aria-hidden="true" />
+              Sign in
             </button>
-          </>
-        ) : (
-          <button className="ghost" onClick={openOwner} title="Owner sign-in" aria-label="Owner sign-in">
-            🔒
-          </button>
-        )}
+          )}
+        </div>
       </header>
 
-      {phase === "owner" && (scan || scanNote) && (
+      {owner && (scan || scanNote) && (
         <div className="scan-banner" role="status">
           {scan ? (
             <>
               <span>
                 Checking albums against Spotify… {scan.done} of {scan.total}
               </span>
-              <progress value={scan.done} max={scan.total || 1} />
+              <progress value={scan.done} max={scan.total || 1} aria-label="Scan progress" />
               <button className="ghost" onClick={() => scanCtl.current?.abort()}>
                 Stop
               </button>
@@ -241,10 +358,15 @@ export default function App() {
             <>
               <span>
                 {scanNote.stopped ? "Scan stopped. " : "Scan finished. "}
-                {scanNote.findings.length > 0
-                  ? `${scanNote.findings.length} album${scanNote.findings.length === 1 ? "" : "s"} to review in the Cover art tab. `
-                  : "Nothing new to correct. "}
-                {scanNote.failed > 0 && `${scanNote.failed} couldn't be checked (Spotify didn't answer).`}
+                {pending > 0
+                  ? `${pending} album${pending === 1 ? "" : "s"} to fix in Cover art. `
+                  : "No covers or titles to fix. "}
+                {ranks &&
+                  (ranks.ties > 0
+                    ? `${ranks.ties} rank${ranks.ties === 1 ? " is" : "s are"} shared by several albums: break the ties in Purgatory. `
+                    : "No shared ranks. ")}
+                {scanNote.failed > 0 && `${scanNote.failed} couldn’t be checked (Spotify didn’t answer). `}
+                {!scanNote.spotify && "Spotify isn’t set up, so covers were only checked in Notion."}
               </span>
               <button className="ghost" onClick={() => setScanNote(null)}>
                 Dismiss
@@ -254,56 +376,63 @@ export default function App() {
         </div>
       )}
 
-      {phase === "public" && onTools && (
-        <p className="note">
-          A hub that runs my music tools: Notion album library, Spotify, streaming charts, setlists and lyrics. These tools
-          run on sample data here; press Run on any of them. The lock opens the real thing (owner only).
-        </p>
-      )}
-      {error && onTools && <p className="error">{error}</p>}
-      {!tools && !error && onTools && <p className="note">Loading…</p>}
+      <main id="main" tabIndex={-1}>
+        {phase === "checking" ? (
+          <p className="note page-note" role="status">
+            Checking your session…
+          </p>
+        ) : (
+          <div className="page-head">
+            <h1>{LABELS[activeTab]}</h1>
+            <p>{intro}</p>
+          </div>
+        )}
 
-      {phase !== "checking" && (
-        <nav className="tabs">
-          {[SHOWCASE, ...(showCovers ? [COVERS] : []), SORTER, "All", ...categories].map((name) => (
-            <button key={name} className={`tab ${name === activeTab ? "active" : ""}`} onClick={() => pickTab(name)}>
-              {name}
-              {name === COVERS && pending > 0 ? ` (${pending})` : ""}
-            </button>
-          ))}
-        </nav>
-      )}
-
-      {/* the showcase, the sorter and every card stay mounted (just hidden) so state survives switching tabs */}
-      {phase !== "checking" && <Showcase hidden={!onShowcase} />}
-      {phase !== "checking" && (
-        <AlbumSorter
-          key={phase}
-          api={phase === "owner" ? sorterApi : demoApi.sorter}
-          live={phase === "owner"}
-          hidden={!onSorter}
-        />
-      )}
-      {onCovers && (
-        <CoverReview
-          items={reviewItems}
-          canSuggest={covers.can_suggest}
-          rejected={rejected}
-          onReject={rejectCover}
-          onBringBack={bringBackRejected}
-          onResolved={resolveCover}
-        />
-      )}
-      <main className="grid">
-        {tools?.map((tool) => (
-          <ToolCard
-            key={`${phase}-${tool.id}`}
-            tool={tool}
-            api={api}
-            live={phase === "owner"}
-            hidden={!onTools || (activeTab !== "All" && (tool.category || "Other") !== activeTab)}
+        {/* the showcase, the sorter and every card stay mounted (just hidden) so state survives switching tabs */}
+        {phase !== "checking" && <Showcase hidden={!onShowcase} />}
+        {phase !== "checking" && (
+          <AlbumSorter
+            key={phase}
+            api={owner ? sorterApi : demoApi.sorter}
+            live={owner}
+            hidden={!onSorter}
+            refresh={refresh}
+            onStatus={setRanks}
           />
-        ))}
+        )}
+        {onCovers && (
+          <CoverReview
+            items={reviewItems}
+            canSuggest={covers.can_suggest}
+            rejected={rejected}
+            onReject={rejectCover}
+            onBringBack={bringBackRejected}
+            onResolved={resolveCover}
+          />
+        )}
+
+        {onTools && categories.length > 1 && (
+          <div className="seg tool-filter" role="group" aria-label="Tool category">
+            {[ALL, ...categories].map((name) => (
+              <button key={name} aria-pressed={name === activeFilter} onClick={() => pickFilter(name)}>
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
+        {error && onTools && <p className="error">{error}</p>}
+        {!tools && !error && onTools && <p className="note">Loading tools…</p>}
+        <div className="bench">
+          {tools?.map((tool) => (
+            <ToolCard
+              key={`${phase}-${tool.id}`}
+              tool={tool}
+              api={api}
+              live={owner}
+              hidden={!onTools || (activeFilter !== ALL && (tool.category || "Other") !== activeFilter)}
+            />
+          ))}
+        </div>
       </main>
 
       {login && <Login message={login.message} onClose={() => setLogin(null)} onDone={() => enter(true)} />}

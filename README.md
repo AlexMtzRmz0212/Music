@@ -1,4 +1,8 @@
-# Music Hub
+# Hell o’ Fame
+
+(The code still calls it Music Hub.) The tabs are The Hall (the showcase), Purgatory (the album sorter), Cover art and Tools. Purgatory only shows
+while some ranks are shared by several albums, and Cover art while some album needs a cover or title fix; Scan library
+checks both again.
 
 One web UI for my music projects. Visitors get the **Showcase** (a read-only wall of my Notion album library) and a
 **demo of the tools on sample data**; I sign in with a password (lock icon) and the same page runs the **real tools**

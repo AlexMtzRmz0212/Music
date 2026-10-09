@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowCounterClockwiseIcon, ArrowDownIcon, ArrowUpIcon, PlayIcon } from "@phosphor-icons/react";
 import { Cover } from "./Showcase";
 
 // What the new ranks do to the list. Both views share one vertical scale, a row per rank number used before or
@@ -22,7 +23,7 @@ function Delta({ value }) {
   if (!value) return <span className="as-delta same">=</span>;
   return (
     <span className={`as-delta ${value > 0 ? "up" : "down"}`} aria-label={value > 0 ? `up ${value}` : `down ${-value}`}>
-      {value > 0 ? "▲" : "▼"}
+      {value > 0 ? <ArrowUpIcon aria-hidden="true" weight="bold" /> : <ArrowDownIcon aria-hidden="true" weight="bold" />}
       {Math.abs(value)}
     </span>
   );
@@ -60,9 +61,9 @@ function Slope({ rows }) {
 
   return (
     <div className={`as-slope${hover ? " hovering" : ""}`}>
-      <h3>Now</h3>
+      <h2>Now</h2>
       <span />
-      <h3>After</h3>
+      <h2>After</h2>
       <ol className="as-col as-abs" style={{ height }}>
         {[...ties].map(([rank, members]) => {
           const ids = members.map((m) => m.id);
@@ -79,7 +80,7 @@ function Slope({ rows }) {
                 <Thumb album={members[0]} />
               )}
               <span className="as-text">
-                <span className="as-name">{tied ? `Tie · ${members.length} albums` : members[0].name}</span>
+                <span className="as-name">{tied ? `Tie, ${members.length} albums` : members[0].name}</span>
                 <span className="as-by">{tied ? members.map((m) => m.name).join(", ") : members[0].artist}</span>
               </span>
             </Row>
@@ -130,7 +131,10 @@ function Replay({ rows }) {
   return (
     <div className="as-replay">
       <div className="as-replay-bar">
-        <button onClick={() => setAfter(!after)}>{after ? "↺ Back to now" : "▶ Play"}</button>
+        <button onClick={() => setAfter(!after)}>
+          {after ? <ArrowCounterClockwiseIcon aria-hidden="true" /> : <PlayIcon aria-hidden="true" weight="fill" />}
+          {after ? "Back to now" : "Play"}
+        </button>
         <span className="as-dim">{after ? "New ranks" : "Ranks as they are in Notion now (ties stacked)"}</span>
       </div>
       <ol className="as-col as-abs" style={{ height: height + 16 }}>
@@ -182,32 +186,32 @@ export default function Movements({ rows }) {
     <div className="as-moves">
       <ul className="as-summary">
         <li className="up">
-          <strong>{up.length}</strong> go up
+          <strong>{up.length}</strong> rise
         </li>
         <li className="down">
-          <strong>{down.length}</strong> go down
+          <strong>{down.length}</strong> fall
         </li>
         <li>
           <strong>{rows.length - up.length - down.length}</strong> stay
         </li>
-        {drop && (
-          <li className="as-wide">
-            Biggest drop: <strong>{drop.name}</strong> {drop.rank_text} → {drop.after}
-          </li>
-        )}
         {climb && (
           <li className="as-wide">
-            Biggest climb: <strong>{climb.name}</strong> {climb.rank_text} → {climb.after}
+            Biggest climb: <strong>{climb.name}</strong>, from {climb.rank_text} to {climb.after}
+          </li>
+        )}
+        {drop && (
+          <li className="as-wide">
+            Biggest drop: <strong>{drop.name}</strong>, from {drop.rank_text} to {drop.after}
           </li>
         )}
       </ul>
 
       <div className="as-toolbar">
-        <span className="as-seg" role="group" aria-label="View">
-          <button className={`chip${view === "slope" ? " active" : ""}`} onClick={() => setView("slope")}>
-            Before → after
+        <span className="seg" role="group" aria-label="View">
+          <button aria-pressed={view === "slope"} onClick={() => setView("slope")}>
+            Before and after
           </button>
-          <button className={`chip${view === "replay" ? " active" : ""}`} onClick={() => setView("replay")}>
+          <button aria-pressed={view === "replay"} onClick={() => setView("replay")}>
             Replay
           </button>
         </span>

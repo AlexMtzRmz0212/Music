@@ -20,6 +20,8 @@ function editionMeta(option) {
   return bits.join(", ");
 }
 
+const duration = (s) => (s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : "");
+
 // Same song, different edition: "Song - 2026 Remaster" and "Song (Remastered)" are the standard's "Song".
 const key = (title) =>
   title
@@ -91,19 +93,26 @@ export default function EditionPicker({ options, albumName, selected, onPick }) 
               <span className="cr-opt-name">{editionLabel(o, albumName)}</span>
               <span className="cr-opt-meta">
                 {editionMeta(o)}
-                {o.is_current ? " · yours" : ""}
+                {o.is_current ? ", yours" : ""}
               </span>
               {showTracks && (
                 <span className="cr-tracks">
                   {!list || list.state === "loading" ? (
                     <span className="cr-opt-meta">Loading tracks…</span>
                   ) : list.state === "error" ? (
-                    <span className="cr-opt-meta">Couldn't load the tracks.</span>
+                    <span className="cr-opt-meta">Couldn’t load the tracks.</span>
                   ) : (
                     <ol>
                       {list.tracks.map((t, n) => (
                         <li key={`${t.disc}-${t.n}-${n}`} className={i > 0 && standardKeys.size && !standardKeys.has(key(t.name)) ? "extra" : ""}>
-                          {t.name}
+                          {/* first, so it floats level with the track's first line */}
+                          <span className="cr-dur">{duration(t.seconds)}</span>
+                          <span className="cr-track">{t.name}</span>
+                          {t.explicit && (
+                            <abbr className="cr-e" title="Explicit">
+                              E
+                            </abbr>
+                          )}
                         </li>
                       ))}
                     </ol>

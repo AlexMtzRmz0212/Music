@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ArrowRightIcon, CheckIcon } from "@phosphor-icons/react";
 import { loadAnswers, maxMatches, planRanks, playoff, saveAnswers, tieGroups } from "../sorter";
 import Movements from "./Movements";
 import { Cover } from "./Showcase";
@@ -18,9 +19,9 @@ function Contender({ album, side, onPick }) {
       </span>
       <span className="as-cname">{album.name}</span>
       <span className="as-by">{album.artist}</span>
-      <span className="as-key" aria-hidden="true">
-        {side === "left" ? "←" : "→"}
-      </span>
+      <kbd className="as-key" aria-hidden="true">
+        {side === "left" ? <ArrowLeftIcon /> : <ArrowRightIcon />}
+      </kbd>
     </button>
   );
 }
@@ -40,7 +41,9 @@ function LadderRow({ album, label, className = "" }) {
   );
 }
 
-export default function AlbumSorter({ api, live, hidden }) {
+// `refresh` changes when the library is scanned (reload the ranks); `onStatus` tells the app how many ranks are
+// shared and how many of those are still undecided, so the tab is only offered while there are ties.
+export default function AlbumSorter({ api, live, hidden, refresh, onStatus }) {
   const [albums, setAlbums] = useState(null);
   const [error, setError] = useState("");
   const [answers, setAnswers] = useState(loadAnswers); // group key -> winners' ids, in order
@@ -58,7 +61,7 @@ export default function AlbumSorter({ api, live, hidden }) {
       .then((r) => setAlbums(r.albums))
       .catch((e) => setError(e.message));
   }, [api]);
-  useEffect(load, [load]);
+  useEffect(load, [load, refresh]);
 
   const byId = useMemo(() => new Map((albums || []).map((a) => [a.id, a])), [albums]);
   const groups = useMemo(
@@ -66,6 +69,9 @@ export default function AlbumSorter({ api, live, hidden }) {
     [albums, answers],
   );
   const open = groups.filter((g) => !g.state.done);
+  useEffect(() => {
+    if (albums) onStatus?.({ ties: groups.length, open: open.length });
+  }, [albums, groups.length, open.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const group = groups.find((g) => g.key === picked) || open[0] || null;
   const tiebreak = groups.filter((g) => g.state.done).flatMap((g) => g.state.order);
   const rows = useMemo(() => planRanks(albums || [], tiebreak, compact), [albums, tiebreak.join(), compact]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -120,7 +126,7 @@ export default function AlbumSorter({ api, live, hidden }) {
 
   const changes = rows.filter((r) => r.changed).length;
   const write = async () => {
-    const pending = open.length ? `\n\n${plural(open.length, "tie")} not decided yet will keep Notion's order.` : "";
+    const pending = open.length ? `\n\n${plural(open.length, "tie")} not decided yet will keep Notion’s order.` : "";
     if (!window.confirm(`Write ${plural(changes, "new rank")} to Notion?${pending}`)) return;
     setWriting(true);
     setResult(null);
@@ -146,14 +152,19 @@ export default function AlbumSorter({ api, live, hidden }) {
 
   return (
     <section className="as" hidden={hidden} aria-label="Album sorter">
-      <nav className="as-steps">
-        <button className={`chip${step === "playoffs" ? " active" : ""}`} onClick={() => setStep("playoffs")}>
-          1 · Playoffs {groups.length > 0 && `(${groups.length - open.length}/${groups.length})`}
+      <div className="seg as-steps" role="group" aria-label="Step">
+        <button aria-pressed={step === "playoffs"} onClick={() => setStep("playoffs")}>
+          Playoffs
+          {groups.length > 0 && (
+            <span className="seg-note">
+              {groups.length - open.length} of {groups.length} decided
+            </span>
+          )}
         </button>
-        <button className={`chip${step === "movements" ? " active" : ""}`} onClick={() => setStep("movements")}>
-          2 · Movements &amp; write
+        <button aria-pressed={step === "movements"} onClick={() => setStep("movements")}>
+          Movements and write
         </button>
-      </nav>
+      </div>
 
       {error && (
         <p className="error">
@@ -163,27 +174,36 @@ export default function AlbumSorter({ api, live, hidden }) {
           </button>
         </p>
       )}
-      {!albums && !error && <p className="note">Loading albums…</p>}
+      {!albums && !error && (
+        <p className="note" role="status">
+          Loading albums…
+        </p>
+      )}
 
       {albums && step === "playoffs" && (
         <>
           <p className="note">
             {groups.length === 0
               ? "Every rank already belongs to one album: there are no ties to play off."
-              : `${plural(groups.length, "rank")} ${groups.length === 1 ? "is" : "are"} shared by several albums. Pick the better album of each pair (click, or ← →); the next pair is chosen so you answer as few as possible. The winner keeps the rank, the others follow it.`}
+              : `${plural(groups.length, "rank")} ${groups.length === 1 ? "is" : "are"} shared by several albums. Click the better album of each pair, or use the arrow keys. Each pair is chosen so you answer as few as possible. The winner keeps the rank and the others follow it.`}
           </p>
 
           {groups.length > 0 && (
-            <div className="as-groups" role="list">
+            <div className="as-groups" role="group" aria-label="Ties">
               {groups.map((g) => (
                 <button
                   key={g.key}
-                  role="listitem"
-                  className={`chip${g === group ? " active" : ""}${g.state.done ? " done" : ""}`}
+                  className={`chip${g.state.done ? " done" : ""}`}
+                  aria-pressed={g === group}
                   onClick={() => setPicked(g.key)}
                 >
-                  {g.state.done ? "✓ " : ""}
-                  {pad(g.rank)} · {g.ids.length} albums
+                  {g.state.done && (
+                    <>
+                      <CheckIcon aria-hidden="true" weight="bold" />
+                      <span className="sr-only">Decided: </span>
+                    </>
+                  )}
+                  Rank {pad(g.rank)}, {g.ids.length} albums
                 </button>
               ))}
             </div>
@@ -191,28 +211,32 @@ export default function AlbumSorter({ api, live, hidden }) {
 
           {group && !state.done && (
             <div className="as-arena">
-              <div className="as-match">
+              <div className="as-match plaque">
                 <p className="as-progress">
-                  Rank {pad(group.rank)} · match {state.played + 1}
-                  <span className="as-dim"> · at most {state.atMost} for this tie</span>
+                  Rank {pad(group.rank)}, match {state.played + 1}
+                  <span className="as-dim"> of at most {state.atMost} for this tie</span>
                 </p>
-                <div className="as-pair">
+                {/* keyed by match so each new pair rises in */}
+                <div className="as-pair" key={`${group.key}-${state.played}`}>
                   <Contender album={name(left)} side="left" onPick={() => pick(left)} />
                   <span className="as-vs" aria-hidden="true">
-                    vs
+                    or
                   </span>
                   <Contender album={name(right)} side="right" onPick={() => pick(right)} />
                 </div>
                 <div className="as-match-actions">
                   <button className="ghost" onClick={undo} disabled={!(answers[group.key] || []).length}>
-                    ↶ Undo
+                    <ArrowCounterClockwiseIcon aria-hidden="true" />
+                    Undo
                   </button>
-                  <span className="as-dim">Backspace undoes too</span>
+                  <span className="as-dim">
+                    <kbd>Backspace</kbd> undoes too
+                  </span>
                 </div>
               </div>
 
               <aside className="as-ladder">
-                <h3>Order so far</h3>
+                <h2>Order so far</h2>
                 <p className="as-dim">
                   <strong>{name(state.challenger).name}</strong> lands somewhere in the highlighted part.
                 </p>
@@ -240,8 +264,8 @@ export default function AlbumSorter({ api, live, hidden }) {
           )}
 
           {group && state.done && (
-            <div className="as-decided">
-              <h3>Rank {pad(group.rank)} is decided</h3>
+            <div className="as-decided plaque">
+              <h2>Rank {pad(group.rank)} is decided</h2>
               <p className="as-dim">
                 {plural(state.played, "match", "matches")} (never more than {maxMatches(group.ids.length)} for {group.ids.length} albums). New ranks:
               </p>
@@ -253,13 +277,14 @@ export default function AlbumSorter({ api, live, hidden }) {
               <div className="as-match-actions">
                 {open.length > 0 ? (
                   <button onClick={() => setPicked(open[0].key)}>
-                    Next tie: {pad(open[0].rank)} · {open[0].ids.length} albums →
+                    Next tie: rank {pad(open[0].rank)}, {open[0].ids.length} albums
                   </button>
                 ) : (
-                  <button onClick={() => setStep("movements")}>Every tie is decided. See the movements →</button>
+                  <button onClick={() => setStep("movements")}>See the movements</button>
                 )}
                 <button className="ghost" onClick={() => undo()}>
-                  ↶ Undo last pick
+                  <ArrowCounterClockwiseIcon aria-hidden="true" />
+                  Undo last pick
                 </button>
                 <button className="ghost" onClick={() => setGroupAnswers(group.key, [])}>
                   Play this tie again
@@ -269,7 +294,7 @@ export default function AlbumSorter({ api, live, hidden }) {
           )}
 
           {groups.length === 0 && (
-            <button onClick={() => setStep("movements")}>See the ranking →</button>
+            <button onClick={() => setStep("movements")}>See the ranking</button>
           )}
         </>
       )}
@@ -279,7 +304,7 @@ export default function AlbumSorter({ api, live, hidden }) {
           {open.length > 0 && (
             <p className="as-warn">
               {plural(open.length, "tie")} not decided yet ({open.map((g) => pad(g.rank)).join(", ")}): those albums
-              keep Notion's order for now.{" "}
+              keep Notion’s order for now.{" "}
               <button className="link" onClick={() => setStep("playoffs")}>
                 Go to the playoffs
               </button>
@@ -298,12 +323,16 @@ export default function AlbumSorter({ api, live, hidden }) {
                 : "Nothing to write: Notion already has these ranks."}
               {!live && " Demo: this only changes the sample albums on this page."}
             </p>
-            <button onClick={write} disabled={!changes || writing}>
+            <button className={live ? "danger" : ""} onClick={write} disabled={!changes || writing}>
               {writing ? "Writing…" : `Write ${plural(changes, "rank")} to Notion`}
             </button>
-            {result?.error && <p className="error">{result.error}</p>}
+            {result?.error && (
+              <p className="error" role="alert">
+                {result.error}
+              </p>
+            )}
             {result && !result.error && (
-              <p className="as-dim">
+              <p className="as-dim" role="status">
                 Wrote {plural(result.written, "rank")}
                 {result.failed ? `, ${result.failed} failed (see below)` : ""}.
               </p>

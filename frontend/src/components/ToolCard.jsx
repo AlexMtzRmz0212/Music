@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+const isLink = (value) => typeof value === "string" && /^https?:\/\//.test(value);
+
 function Field({ spec, value, onChange }) {
   if (spec.type === "bool") {
     return (
@@ -20,6 +22,8 @@ function Field({ spec, value, onChange }) {
       ) : (
         <input
           type={spec.type === "number" ? "number" : "text"}
+          name={spec.name}
+          autoComplete="off"
           value={value ?? ""}
           onChange={(e) => onChange(spec.type === "number" ? Number(e.target.value) : e.target.value)}
         />
@@ -44,7 +48,15 @@ function Table({ rows }) {
           {rows.map((r, i) => (
             <tr key={i}>
               {cols.map((c) => (
-                <td key={c}>{String(r[c] ?? "")}</td>
+                <td key={c}>
+                  {isLink(r[c]) ? (
+                    <a href={r[c]} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  ) : (
+                    String(r[c] ?? "")
+                  )}
+                </td>
               ))}
             </tr>
           ))}
@@ -59,6 +71,11 @@ function Result({ data }) {
   return (
     <>
       {data.log?.length > 0 && <pre className="log">{data.log.join("\n")}</pre>}
+      {rest.url && isLink(rest.url) && (
+        <a className="tool-link" href={rest.url} target="_blank" rel="noreferrer">
+          Open the page
+        </a>
+      )}
       {Object.keys(rest).length > 0 && <pre className="json">{JSON.stringify(rest, null, 2)}</pre>}
       {rows?.length > 0 && <Table rows={rows} />}
       {lyrics && <pre className="lyrics">{lyrics}</pre>}
@@ -86,20 +103,26 @@ export default function ToolCard({ tool, api, live, hidden }) {
   };
 
   return (
-    <section className={`card ${unconfigured ? "off" : ""}`} hidden={hidden}>
-      <h2>
-        {tool.title} {tool.writes && <small className="tag">can write</small>}
+    <section className={`card ${unconfigured ? "off" : ""}`} hidden={hidden} aria-labelledby={`tool-${tool.id}`}>
+      <h2 id={`tool-${tool.id}`}>
+        {tool.title} {tool.writes && <small className="tag">Writes to Notion</small>}
       </h2>
       <p>{tool.description}</p>
       {unconfigured && <p className="error">Missing settings: {tool.missing.join(", ")}</p>}
       {tool.params.map((p) => (
         <Field key={p.name} spec={p} value={values[p.name]} onChange={(v) => setValues({ ...values, [p.name]: v })} />
       ))}
-      <button onClick={run} disabled={running || unconfigured}>
+      <button className={realWrite ? "danger" : ""} onClick={run} disabled={running || unconfigured}>
         {running ? "Running…" : realWrite ? "Run (writes!)" : "Run"}
       </button>
-      {data?.ok === false && <p className="error">{data.error}</p>}
-      {data && <Result data={data} />}
+      {data?.ok === false && (
+        <p className="error" role="alert">
+          {data.error}
+        </p>
+      )}
+      <div className="tool-result" aria-live="polite">
+        {data && <Result data={data} />}
+      </div>
     </section>
   );
 }
