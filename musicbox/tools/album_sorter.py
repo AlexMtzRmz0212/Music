@@ -1,4 +1,6 @@
-from ..albums import AlbumSorter
+from ..library.sink import Change, apply_changes
+from ..library.source import fetch_albums, notion_client
+from ..library.transform import rank_listened
 
 META = {
     "id": "album_sorter",
@@ -17,8 +19,19 @@ META = {
 
 
 def run(params, log):
-    albums = AlbumSorter(log).run(compact_mode=params["compact"], dry_run=params["dry_run"])
+    notion = notion_client()
+    albums = fetch_albums(notion)
+    log(f"Found {len(albums)} total albums")
+
+    ranked = rank_listened(albums, compact=params["compact"])
+    # only pages whose rank would actually change need a write
+    changes = [Change.of(a, rank=rank) for a, rank in ranked if rank != a.rank_text]
+    log(f"{len(ranked)} listened albums ranked, {len(changes)} need an update")
+
+    written, _ = apply_changes(notion, changes, log, dry_run=params["dry_run"])
+    if params["dry_run"]:
+        log("Dry run: nothing changed in Notion")
     return {
-        "written": 0 if params["dry_run"] else len(albums),
-        "rows": [{"rank": a.rating, "album": a.name, "artist": a.artist} for a in albums[:50]],
+        "written": written,
+        "rows": [{"rank": rank, "album": a.name, "artist": a.artist} for a, rank in ranked[:50]],
     }

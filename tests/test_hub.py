@@ -6,7 +6,7 @@ from musicbox.tools import TOOLS, list_tools
 client = TestClient(app)
 
 EXPECTED = {
-    "album_stats", "album_sorter", "album_decorator", "streams_songs",
+    "album_sorter", "streams_songs",
     "streams_albums", "spotify_search", "setlistfm", "genius_lyrics",
 }
 
@@ -43,13 +43,3 @@ def test_missing_settings_is_a_result_not_a_crash(monkeypatch):
     body = client.post("/api/tools/genius_lyrics/run", json={}).json()
     assert not body["ok"] and "GENIUS_TOKEN" in body["error"]
 
-
-def test_sorter_ranks_without_notion():
-    from musicbox.albums.base import Album
-    from musicbox.albums.sorter import AlbumSorter
-
-    sorter = AlbumSorter.__new__(AlbumSorter)  # skip the Notion client
-    sorter.albums = [Album("a", "x", 1, "Listened"), Album("b", "x", 1, "Listened"),
-                     Album("c", "x", None, "Listened"), Album("d", "x", 5, "Not listened")]
-    ranked = sorter.process_albums()
-    assert [(a.name, a.rating) for a in ranked] == [("a", "01"), ("b", "02"), ("c", "03")]

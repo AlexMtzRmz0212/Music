@@ -36,6 +36,20 @@ export const auth = {
   logout: () => fetchApi("/auth/logout", { method: "POST" }),
 };
 
+/** Public, read-only views. No login, so a 401 never applies here. */
+export const showcaseApi = {
+  albums: () => fetchApi("/showcase/albums"),
+};
+
+/** Cover and title review (owner only): what needs attention, Spotify's proposal, and writing a confirmed change. */
+export const coversApi = {
+  queue: () => fetchApi("/covers/queue"),
+  suggest: (name, artist, current) =>
+    fetchApi("/covers/suggest", { method: "POST", body: JSON.stringify({ name, artist, current }) }),
+  tracks: (albumId) => fetchApi(`/covers/tracks/${albumId}`),
+  apply: (id, { cover, icon, title }) => fetchApi("/covers/apply", { method: "POST", body: JSON.stringify({ id, cover, icon, title }) }),
+};
+
 /** The real tools (owner only). demo/demoApi.js has the same two methods. */
 export const realApi = {
   tools: () => fetchApi("/tools"),

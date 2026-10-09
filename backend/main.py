@@ -1,8 +1,9 @@
-"""Music Hub API: owner login plus the tool registry (see musicbox/tools)."""
+"""Music Hub API: public showcase, owner login, and the owner-only cover review and tool registry."""
 
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field
 
 from musicbox.runtime import RunLog
@@ -10,9 +11,14 @@ from musicbox.tools import TOOLS, list_tools, run_tool
 
 from .auth import require_owner
 from .auth import router as auth_router
+from .covers import router as covers_router
+from .showcase import router as showcase_router
 
 app = FastAPI(title="Music Hub")
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(auth_router)
+app.include_router(showcase_router)
+app.include_router(covers_router)
 
 
 class RunBody(BaseModel):

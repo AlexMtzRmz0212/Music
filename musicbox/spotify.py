@@ -40,3 +40,25 @@ def search(query: str, kind: str = "album", limit: int = 10) -> list[dict]:
     if response.status_code != 200:
         raise RuntimeError(f"Spotify search failed ({response.status_code})")
     return response.json()[f"{kind}s"]["items"]
+
+
+def album_tracks(album_id: str) -> list[dict]:
+    """The tracks of one album, in order: [{n, name, seconds, explicit}]."""
+    tracks: list[dict] = []
+    url = f"https://api.spotify.com/v1/albums/{album_id}/tracks"
+    params: dict | None = {"limit": 50}
+    while url:
+        response = requests.get(url, headers={"Authorization": f"Bearer {get_token()}"}, params=params, timeout=20)
+        if response.status_code != 200:
+            raise RuntimeError(f"Spotify album tracks failed ({response.status_code})")
+        body = response.json()
+        for item in body["items"]:
+            tracks.append({
+                "n": item.get("track_number"),
+                "disc": item.get("disc_number", 1),
+                "name": item.get("name", ""),
+                "seconds": round((item.get("duration_ms") or 0) / 1000),
+                "explicit": bool(item.get("explicit")),
+            })
+        url, params = body.get("next"), None  # `next` already carries its own query
+    return tracks
