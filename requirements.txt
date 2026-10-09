@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-dotenv==1.2.1
+requests==2.34.2
+beautifulsoup4==4.15.0
+notion-client==2.3.0
+lyricsgenius==3.14.0

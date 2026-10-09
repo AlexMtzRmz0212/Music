@@ -1,3 +1,8 @@
+# Frontend and local-only files
+node_modules/
+.vercel
+.claude/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
