@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { UNAUTHORIZED_EVENT, auth, coversApi, realApi } from "./api";
+import { UNAUTHORIZED_EVENT, auth, coversApi, realApi, sorterApi } from "./api";
 import { hydrate, loadFindings, loadRejected, saveFindings, saveRejected } from "./coverState";
 import { scanLibrary } from "./coverScan";
 import { demoApi } from "./demo/demoApi";
+import AlbumSorter from "./components/AlbumSorter";
 import CoverReview from "./components/CoverReview";
 import Login from "./components/Login";
 import Showcase from "./components/Showcase";
@@ -23,9 +24,11 @@ function hint(on) {
 }
 
 // The showcase is public and always first. "Cover art" is owner-only and exists only while some album
-// needs a cover or title correction; the other tabs are the tool categories.
+// needs a cover or title correction. The album sorter runs on sample albums until the owner signs in.
+// The other tabs are the tool categories.
 const SHOWCASE = "Showcase";
 const COVERS = "Cover art";
+const SORTER = "Album sorter";
 const TAB = "mh-tab";
 function savedTab() {
   try {
@@ -155,10 +158,11 @@ export default function App() {
   const categories = [...new Set((tools || []).map((t) => t.category || "Other"))];
   // the tab stays while you are on it, so finishing the last card doesn't throw you off the page
   const showCovers = Boolean(covers) && (reviewItems.length > 0 || tab === COVERS);
-  const activeTab = [SHOWCASE, "All"].includes(tab) || categories.includes(tab) || (tab === COVERS && showCovers) ? tab : SHOWCASE;
+  const activeTab = [SHOWCASE, SORTER, "All"].includes(tab) || categories.includes(tab) || (tab === COVERS && showCovers) ? tab : SHOWCASE;
   const onShowcase = activeTab === SHOWCASE;
   const onCovers = activeTab === COVERS;
-  const onTools = !onShowcase && !onCovers;
+  const onSorter = activeTab === SORTER;
+  const onTools = !onShowcase && !onCovers && !onSorter;
   const pickTab = (name) => {
     setTab(name);
     try {
@@ -261,7 +265,7 @@ export default function App() {
 
       {phase !== "checking" && (
         <nav className="tabs">
-          {[SHOWCASE, ...(showCovers ? [COVERS] : []), "All", ...categories].map((name) => (
+          {[SHOWCASE, ...(showCovers ? [COVERS] : []), SORTER, "All", ...categories].map((name) => (
             <button key={name} className={`tab ${name === activeTab ? "active" : ""}`} onClick={() => pickTab(name)}>
               {name}
               {name === COVERS && pending > 0 ? ` (${pending})` : ""}
@@ -270,8 +274,16 @@ export default function App() {
         </nav>
       )}
 
-      {/* the showcase and every card stay mounted (just hidden) so state survives switching tabs */}
+      {/* the showcase, the sorter and every card stay mounted (just hidden) so state survives switching tabs */}
       {phase !== "checking" && <Showcase hidden={!onShowcase} />}
+      {phase !== "checking" && (
+        <AlbumSorter
+          key={phase}
+          api={phase === "owner" ? sorterApi : demoApi.sorter}
+          live={phase === "owner"}
+          hidden={!onSorter}
+        />
+      )}
       {onCovers && (
         <CoverReview
           items={reviewItems}

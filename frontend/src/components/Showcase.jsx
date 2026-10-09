@@ -45,7 +45,7 @@ function hue(text) {
 }
 
 /** Cover art, or a coloured tile with the album's initials when there is none (or its link expired). */
-function Cover({ album, eager = false }) {
+export function Cover({ album, eager = false }) {
   const [failed, setFailed] = useState(false);
   if (album.cover && !failed) {
     return (

@@ -50,6 +50,12 @@ export const coversApi = {
   apply: (id, { cover, icon, title }) => fetchApi("/covers/apply", { method: "POST", body: JSON.stringify({ id, cover, icon, title }) }),
 };
 
+/** Album sorter (owner only): the ranked albums, and writing the playoff result. demo/demoApi.js has a stand-in. */
+export const sorterApi = {
+  albums: () => fetchApi("/sorter/albums"),
+  apply: ({ tiebreak, compact }) => fetchApi("/sorter/apply", { method: "POST", body: JSON.stringify({ tiebreak, compact }) }),
+};
+
 /** The real tools (owner only). demo/demoApi.js has the same two methods. */
 export const realApi = {
   tools: () => fetchApi("/tools"),

@@ -6,8 +6,7 @@ from musicbox.tools import TOOLS, list_tools
 client = TestClient(app)
 
 EXPECTED = {
-    "album_sorter", "streams_songs",
-    "streams_albums", "spotify_search", "setlistfm", "genius_lyrics",
+    "streams_songs", "streams_albums", "spotify_search", "setlistfm", "genius_lyrics",
 }
 
 

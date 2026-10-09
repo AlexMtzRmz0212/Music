@@ -71,9 +71,16 @@ def _album(name, rank, status="Listened"):
     return Album(page_id=name, name=name, rank=rank, status=status)
 
 
-def test_rank_listened_is_unique_padded_and_skips_unlistened():
+def test_rank_listened_is_unique_padded_and_skips_unlistened_and_unranked():
     ranked = rank_listened([_album("a", 1), _album("b", 1), _album("c", None), _album("d", 5, "Not listened")])
-    assert [(a.name, r) for a, r in ranked] == [("a", "01"), ("b", "02"), ("c", "03")]
+    assert [(a.name, r) for a, r in ranked] == [("a", "01"), ("b", "02")]
+
+
+def test_rank_listened_orders_ties_by_the_playoff_and_bumps_the_rest():
+    albums = [_album("a", 5), _album("b", 5), _album("c", 5), _album("d", 6), _album("e", 9), _album("top", 1)]
+    ranked = rank_listened(albums, tiebreak=["c", "a"])  # b wasn't decided: after the decided ones
+    assert [(a.name, r) for a, r in ranked] == [
+        ("top", "01"), ("c", "05"), ("a", "06"), ("b", "07"), ("d", "08"), ("e", "09")]
 
 
 def test_rank_listened_compact_and_widths():
@@ -461,3 +468,29 @@ def test_tracks_route_is_owner_only_and_validates_the_id(monkeypatch):
     assert client.get("/api/covers/tracks/not-an-id").status_code == 400
     assert client.get(f"/api/covers/tracks/{good}").json() == {"tracks": [{"n": 1, "name": good}]}
 
+
+
+def test_sorter_routes_need_login(monkeypatch):
+    _configure_owner(monkeypatch)
+    anonymous = TestClient(app)
+    assert anonymous.get("/api/sorter/albums").status_code == 401
+    assert anonymous.post("/api/sorter/apply", json={"tiebreak": []}).status_code == 401
+
+
+def test_sorter_lists_ranked_albums_and_writes_only_changed_ranks(monkeypatch):
+    _configure_owner(monkeypatch)
+    monkeypatch.setattr("musicbox.library.sink.PAUSE", 0)
+    albums = [_album("a", 5), _album("b", 5), _album("c", 7), _album("d", None), _album("e", 3, "Not listened")]
+    for a in albums:
+        a.rank_text = f"{a.rank:02d}" if a.rank else None
+    notion = FakeNotion()
+    monkeypatch.setattr("backend.sorter.fetch_albums", lambda *args: albums)
+    monkeypatch.setattr("backend.sorter.notion_client", lambda: notion)
+    assert client.post("/api/auth/login", json={"password": "secret"}).status_code == 204
+
+    listed = client.get("/api/sorter/albums").json()["albums"]
+    assert [a["id"] for a in listed] == ["a", "b", "c"]
+
+    body = client.post("/api/sorter/apply", json={"tiebreak": ["b", "a"]}).json()
+    assert body["written"] == 1 and body["failed"] == 0
+    assert notion.updates == [("a", {"properties": {"Alex Top": {"select": {"name": "06"}}}})]

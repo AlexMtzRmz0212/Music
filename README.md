@@ -61,6 +61,23 @@ not offered again (the finished screen has a button to bring them back). Nothing
 - Routes (all owner-only): `GET /api/covers/queue`, `POST /api/covers/suggest`, `GET /api/covers/tracks/{spotify album id}`, `POST /api/covers/apply` (cover,
   icon and/or title). Cover URLs must be Spotify's CDN; apply refreshes the public showcase.
 
+## Album sorter (owner, with a demo for visitors)
+
+A tab that gives every listened album its own "Alex Top" rank. Albums that share a rank play off in pairs: pick the
+better one (click, or the arrow keys) and the next pair is chosen by binary insertion, so nothing that already follows
+from earlier answers is asked (5 tied albums take at most 8 matches instead of all 10 pairs). Undo with Backspace. One
+shared rank after another, until every rank has one album. Answers are kept in this browser (`mh-sorter-answers`)
+until they are written.
+
+- **Movements** shows what the new ranks do: a before/after slope chart on one rank scale (a tie fans out, everything
+  below slides down) and a Replay that deals each tie out like a pile of cards. "Close gaps" renumbers 1..N.
+- **Rule** (`rank_listened` in `transform.py`, mirrored in `frontend/src/sorter.js` for the preview): only listened
+  albums that already have a rank; ties in playoff order (undecided ones in Notion order); the albums below are bumped
+  down to make room. Unranked albums are left out.
+- Writing re-reads Notion and recomputes the ranks on the server, then writes only pages whose rank changes (one
+  Notion call each, so run it locally). Routes (owner only): `GET /api/sorter/albums`, `POST /api/sorter/apply`
+  (`tiebreak`: page ids from the playoffs, `compact`). The public demo plays on sample albums and never writes.
+
 ## Album pipeline
 
 `musicbox/library/` is one stage per file, shared by the showcase and the owner tools: `source.py` pulls Notion pages
@@ -72,7 +89,6 @@ changes back (dry run by default, retries on rate limits). New album features sh
 
 | Tool | What it does | Needs |
 |---|---|---|
-| Album sorter | Unique zero-padded rank for every listened album (`Alex Top`); compact mode; dry run | same |
 | Most streamed songs | Wikipedia list -> Notion table | `NOTION_SECRET`, `STREAMED_SONGS_DB_ID` |
 | Most streamed albums | kworb list -> Notion table | `NOTION_SECRET`, `STREAMED_ALBUMS_DB_ID` |
 | Spotify search | Albums / artists / tracks | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` |
@@ -91,10 +107,10 @@ Drop one file in `musicbox/tools/` with a `META` dict and a `run(params, log)` f
 ## Layout
 
 ```
-backend/      FastAPI: /api/showcase/albums (public), /api/covers/* and /api/tools/* (owner), /api/auth/*   (auth.py copied from ProjectsTracker)
+backend/      FastAPI: /api/showcase/albums (public), /api/covers/*, /api/sorter/* and /api/tools/* (owner), /api/auth/*   (auth.py copied from ProjectsTracker)
 api/          Vercel entry point
 musicbox/     config (env names + legacy aliases), Spotify client, library/ (album pipeline), tools/
-frontend/     Vite + React (showcase, tool cards, login, in-memory demo API)
+frontend/     Vite + React (showcase, album sorter, cover review, tool cards, login, in-memory demo API)
 experiments/  earlier prototypes (Notiontify, Spotify test, Genius demo, notebook)
 tests/        pytest
 ```

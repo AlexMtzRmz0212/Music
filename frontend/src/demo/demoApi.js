@@ -1,12 +1,12 @@
 // In-memory stand-in for the tools API, used by the public demo. Same shapes as
 // the real API; nothing leaves the browser and no account is touched.
 
+import { planRanks } from "../sorter";
+
 const T = (id, category, title, description, writes, params) => ({ id, category, title, description, writes, params, missing: [] });
 const dry = { name: "dry_run", label: "Dry run (don't write)", type: "bool", default: true };
 
 const TOOLS = [
-  T("album_sorter", "Album library", "Album sorter", "Gives every listened album a unique zero-padded rank. Dry run shows the new ranking without touching Notion.", true,
-    [{ name: "compact", label: "Compact ranks (1..N, no gaps)", type: "bool", default: false }, dry]),
   T("streams_songs", "Charts", "Most streamed songs", "Scrapes the most-streamed Spotify songs and fills a Notion table.", true, [dry]),
   T("streams_albums", "Charts", "Most streamed albums", "Scrapes all-time Spotify album streams and fills a Notion table.", true, [dry]),
   T("spotify_search", "Lookup", "Spotify search", "Looks up albums, artists or tracks in the Spotify catalogue.", false,
@@ -18,16 +18,7 @@ const TOOLS = [
     [{ name: "artist", label: "Artist", type: "text", default: "Eminem" }, { name: "song", label: "Song", type: "text", default: "Lose Yourself" }]),
 ];
 
-const ALBUMS = [
-  ["01", "OK Computer", "Radiohead"], ["02", "To Pimp a Butterfly", "Kendrick Lamar"], ["03", "Blurryface", "Twenty One Pilots"],
-  ["04", "Walking On A Dream", "Empire of the Sun"], ["05", "Random Access Memories", "Daft Punk"],
-].map(([rank, album, artist]) => ({ rank, album, artist }));
-
 const RUNS = {
-  album_sorter: (p) => ({
-    log: ["Starting album sorting...", "Found 234 total albums", p.dry_run ? "Dry run: 188 listened albums would be written, nothing changed in Notion" : "Demo mode never writes"],
-    result: { written: 0, rows: ALBUMS },
-  }),
   streams_songs: () => ({
     log: ["Retrieved 100 songs (sample data)"],
     result: { written: 0, rows: [
@@ -77,9 +68,32 @@ const SAMPLE_ALBUMS = [
   S(null, "Discovery", "Daft Punk", ["Electronic", "House"], "2001-03-12", "Not listened"),
 ];
 
+// Album sorter sample: a five-way tie at 05 and a three-way one at 09. "Writing" only changes this list.
+let SORTER_ALBUMS = [
+  [1, "OK Computer", "Radiohead"], [2, "To Pimp a Butterfly", "Kendrick Lamar"], [3, "Blurryface", "Twenty One Pilots"],
+  [4, "Random Access Memories", "Daft Punk"],
+  [5, "Breach", "Twenty One Pilots"], [5, "The Dark Side of the Moon", "Pink Floyd"], [5, "Hurry Up Tomorrow", "The Weeknd"],
+  [5, "Abbey Road", "The Beatles"], [5, "Thriller", "Michael Jackson"],
+  [6, "Walking On A Dream", "Empire of the Sun"], [7, "Blue", "Joni Mitchell"],
+  [9, "Kind of Blue", "Miles Davis"], [9, "Lonerism", "Tame Impala"], [9, "Rumours", "Fleetwood Mac"],
+  [12, "Kid A", "Radiohead"], [15, "Currents", "Tame Impala"],
+].map(([rank, name, artist]) => ({ id: `sample-${name}`, name, artist, cover: null, rank, rank_text: String(rank).padStart(2, "0") }));
+
 export const demoApi = {
   showcase: async () => ({ albums: SAMPLE_ALBUMS, updated_at: null }),
   tools: async () => TOOLS,
+  sorter: {
+    albums: async () => {
+      await wait(200);
+      return { albums: SORTER_ALBUMS };
+    },
+    apply: async ({ tiebreak, compact }) => {
+      await wait(400);
+      const rows = planRanks(SORTER_ALBUMS, tiebreak, compact);
+      SORTER_ALBUMS = rows.map(({ id, name, artist, cover, after, afterNum }) => ({ id, name, artist, cover, rank: afterNum, rank_text: after }));
+      return { written: rows.filter((r) => r.changed).length, failed: 0, log: [] };
+    },
+  },
   run: async (id, params) => {
     await wait(400);
     const { log, result } = RUNS[id](params);

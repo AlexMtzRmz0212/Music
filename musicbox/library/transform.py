@@ -5,23 +5,25 @@ from typing import Optional
 from .models import Album
 
 
-def rank_listened(albums: list[Album], compact: bool = False) -> list[tuple[Album, str]]:
-    """Unique, zero-padded "Alex Top" ranks for every listened album.
+def rank_listened(
+    albums: list[Album], compact: bool = False, tiebreak: Optional[list[str]] = None
+) -> list[tuple[Album, str]]:
+    """Unique, zero-padded "Alex Top" ranks for every listened album that already has one.
 
-    Rated albums keep their order (ties are bumped up by one), unrated ones go last.
+    Albums sharing a rank are ordered by their position in `tiebreak` (page ids, the playoff result), then by
+    Notion order; the rest of the list is bumped down to make room. Unranked albums are left out.
     With `compact` the ranks are renumbered 1..N without gaps.
     """
-    listened = [a for a in albums if a.is_listened]
-    rated = sorted((a for a in listened if a.rank is not None), key=lambda a: a.rank)
-    unrated = [a for a in listened if a.rank is None]
+    position = {page_id: i for i, page_id in enumerate(tiebreak or [])}
+    rated = sorted(
+        (a for a in albums if a.is_listened and a.rank is not None),
+        key=lambda a: (a.rank, position.get(a.page_id, len(position))),
+    )
 
     ordered: list[tuple[Album, int]] = []
     last = 0
     for album in rated:
         last = album.rank if album.rank > last else last + 1
-        ordered.append((album, last))
-    for album in unrated:
-        last += 1
         ordered.append((album, last))
 
     if compact:

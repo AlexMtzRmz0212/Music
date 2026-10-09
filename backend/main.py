@@ -1,4 +1,4 @@
-"""Music Hub API: public showcase, owner login, and the owner-only cover review and tool registry."""
+"""Music Hub API: public showcase, owner login, and the owner-only cover review, album sorter and tool registry."""
 
 from typing import Any
 
@@ -13,12 +13,14 @@ from .auth import require_owner
 from .auth import router as auth_router
 from .covers import router as covers_router
 from .showcase import router as showcase_router
+from .sorter import router as sorter_router
 
 app = FastAPI(title="Music Hub")
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(auth_router)
 app.include_router(showcase_router)
 app.include_router(covers_router)
+app.include_router(sorter_router)
 
 
 class RunBody(BaseModel):
