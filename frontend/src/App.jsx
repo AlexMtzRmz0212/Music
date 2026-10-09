@@ -89,11 +89,13 @@ export default function App() {
         <span className={`badge ${phase === "owner" ? "live" : ""}`}>{phase === "owner" ? "Live" : "Demo · sample data"}</span>
         <span className="spacer" />
         {phase === "owner" ? (
-          authRequired && (
-            <button className="ghost" onClick={signOut}>
-              Sign out
-            </button>
-          )
+          <button
+            className="ghost"
+            onClick={signOut}
+            title={authRequired ? "End the owner session" : "Login is off locally (no OWNER_PASSWORD); this goes back to the demo"}
+          >
+            {authRequired ? "Log out" : "Back to demo"}
+          </button>
         ) : (
           <button className="ghost" onClick={openOwner} title="Owner sign-in" aria-label="Owner sign-in">
             🔒
